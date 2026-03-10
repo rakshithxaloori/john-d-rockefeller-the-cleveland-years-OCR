@@ -1,0 +1,196 @@
+:root {
+  --paper: #f5efe3;
+  --paper-dark: #e6dbc7;
+  --ink: #231815;
+  --muted: #6b625b;
+  --left: #1f6b84;
+  --right: #af5d36;
+  --accent: #111111;
+  --card: rgba(255, 252, 246, 0.82);
+  --line: rgba(35, 24, 21, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(31, 107, 132, 0.14), transparent 32%),
+    radial-gradient(circle at top right, rgba(175, 93, 54, 0.18), transparent 28%),
+    linear-gradient(160deg, #f6f2ea 0%, #e9decd 100%);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px;
+}
+
+.panel,
+.stage-shell {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: 0 18px 60px rgba(27, 18, 16, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.panel {
+  padding: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 2.3vw, 2.8rem);
+  line-height: 0.95;
+}
+
+.lede {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.controls {
+  display: grid;
+  gap: 12px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 16px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+.mode {
+  background: var(--paper-dark);
+  color: var(--ink);
+}
+
+.mode.active {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 10px 26px rgba(17, 17, 17, 0.18);
+}
+
+.ghost {
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+}
+
+.save {
+  background: linear-gradient(135deg, var(--left), var(--right));
+  color: white;
+  box-shadow: 0 10px 26px rgba(31, 107, 132, 0.28);
+}
+
+.status-grid {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0 16px;
+}
+
+.status-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+}
+
+.status-card span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.status-card code,
+.status-card strong {
+  font-size: 0.95rem;
+}
+
+.message {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+}
+
+.stage-shell {
+  padding: 18px;
+}
+
+.legend {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 14px;
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  margin-right: 8px;
+}
+
+.swatch.left {
+  background: var(--left);
+}
+
+.swatch.right {
+  background: var(--right);
+}
+
+.stage {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #161313;
+}
+
+#screenshot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

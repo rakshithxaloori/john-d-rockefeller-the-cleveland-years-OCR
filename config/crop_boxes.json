@@ -1,0 +1,20 @@
+{
+  "source_image": "raw_ss/Screenshot 2026-03-10 at 12.22.14 PM.png",
+  "image_size": {
+    "width": 2880,
+    "height": 1800
+  },
+  "left": {
+    "x": 580,
+    "y": 210,
+    "width": 890,
+    "height": 1510
+  },
+  "right": {
+    "x": 1467,
+    "y": 209,
+    "width": 938,
+    "height": 1511
+  },
+  "created_at": "2026-03-10T16:24:59.963Z"
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crop Annotator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <p class="eyebrow">Manual Crop Template</p>
+        <h1>Box the left and right pages once.</h1>
+        <p class="lede">
+          This uses the first screenshot in <code>raw_ss/</code>. Draw the left and right
+          page boxes, save them, and the extractor will reuse those coordinates for every
+          screenshot.
+        </p>
+
+        <div class="controls">
+          <button id="left-button" class="mode active" type="button">Draw Left Box</button>
+          <button id="right-button" class="mode" type="button">Draw Right Box</button>
+          <button id="clear-left" class="ghost" type="button">Clear Left</button>
+          <button id="clear-right" class="ghost" type="button">Clear Right</button>
+          <button id="save-button" class="save" type="button">Save Crop Config</button>
+        </div>
+
+        <div class="status-grid">
+          <div class="status-card">
+            <span>Image</span>
+            <strong id="image-name">Loading...</strong>
+          </div>
+          <div class="status-card">
+            <span>Config Path</span>
+            <strong id="config-path">config/crop_boxes.json</strong>
+          </div>
+          <div class="status-card">
+            <span>Left Box</span>
+            <code id="left-coords">Not set</code>
+          </div>
+          <div class="status-card">
+            <span>Right Box</span>
+            <code id="right-coords">Not set</code>
+          </div>
+        </div>
+
+        <p id="message" class="message">Select a mode, then drag on the screenshot.</p>
+      </section>
+
+      <section class="stage-shell">
+        <div class="legend">
+          <span><i class="swatch left"></i> Left page</span>
+          <span><i class="swatch right"></i> Right page</span>
+        </div>
+        <div id="stage" class="stage">
+          <img id="screenshot" alt="First screenshot" />
+          <canvas id="overlay"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+  </html>
