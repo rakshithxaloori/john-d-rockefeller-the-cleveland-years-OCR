@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import csv
 import io
 import json
@@ -27,7 +28,14 @@ VIEWER_RE = re.compile(
     re.IGNORECASE,
 )
 VIEWER_URL_RE = re.compile(r"/page/([A-Za-z0-9]+)/mode", re.IGNORECASE)
-PAGE_NUMBER_RE = re.compile(r"(\d{1,4})")
+PAGE_LABEL_TOKEN_RE = re.compile(r"\b([0-9]{1,4}|[IVXLCDMivxlcdm]{1,8})\b")
+TRAILING_PAGE_LABEL_RE = re.compile(
+    r"(?:\s|^)([0-9]{1,4}|[IVXLCDMivxlcdm]{1,8})\s*$"
+)
+ROMAN_NUMERAL_RE = re.compile(
+    r"^(?=[IVXLCDM]+$)M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$",
+    re.IGNORECASE,
+)
 NOISE_SNIPPETS = (
     "archive.org",
     "return now",
@@ -53,6 +61,49 @@ def repo_relative(path: Path) -> str:
         return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
     except ValueError:
         return path.resolve().as_posix()
+
+
+def ordered_spreads(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    spreads = manifest.get("spreads", [])
+    spreads.sort(
+        key=lambda item: (
+            item.get("viewer_sequence") is None,
+            item.get("viewer_sequence") or sys.maxsize,
+            item.get("spread_id"),
+        )
+    )
+    return spreads
+
+
+def ordered_pages(spread: dict[str, Any]) -> list[dict[str, Any]]:
+    pages = spread.get("pages", [])
+    pages.sort(key=lambda page: 0 if page.get("side") == "left" else 1)
+    return pages
+
+
+def normalize_page_label(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if candidate.isdigit():
+        number = int(candidate)
+        if number <= 0:
+            return None
+        return str(number)
+
+    candidate = candidate.upper()
+    if ROMAN_NUMERAL_RE.fullmatch(candidate):
+        return candidate
+    return None
+
+
+def numeric_page_label(label: str | None) -> int | None:
+    if label and label.isdigit():
+        return int(label)
+    return None
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -550,16 +601,21 @@ def extract_printed_page_number(page_image: np.ndarray) -> str | None:
             text = tesseract_run(
                 prepared,
                 psm=psm,
-                extra_config=["-c", "tessedit_char_whitelist=0123456789"],
+                extra_config=["-c", "tessedit_char_whitelist=0123456789IVXLCDMivxlcdm"],
             )
-            matches = PAGE_NUMBER_RE.findall(text)
-            candidates.extend(matches)
+            matches = PAGE_LABEL_TOKEN_RE.findall(text)
+            candidates.extend(
+                candidate
+                for candidate in (normalize_page_label(match) for match in matches)
+                if candidate is not None
+            )
 
     if not candidates:
         return None
 
-    candidates.sort(key=lambda item: (-len(item), item))
-    return candidates[0]
+    ranked = Counter(candidates).most_common()
+    ranked.sort(key=lambda item: (-item[1], len(item[0]), item[0]))
+    return ranked[0][0]
 
 
 def words_confidence(words: list[OCRWord]) -> float:
@@ -930,9 +986,136 @@ def strip_trailing_page_number(
 ) -> None:
     if not printed_page_number:
         return
-    pattern = re.compile(rf"(?:\s+|\n+){re.escape(printed_page_number)}\s*$")
+    pattern = re.compile(
+        rf"(?:\s+|\n+){re.escape(printed_page_number)}\s*$", re.IGNORECASE
+    )
     for block in text_blocks:
         block["text"] = pattern.sub("", block["text"]).strip()
+
+
+def extract_trailing_page_number(text_blocks: list[dict[str, Any]]) -> str | None:
+    for block in reversed(text_blocks):
+        if not block.get("keep", True):
+            continue
+        text = block.get("text", "").strip()
+        if not text:
+            continue
+        match = TRAILING_PAGE_LABEL_RE.search(text)
+        if match:
+            return normalize_page_label(match.group(1))
+    return None
+
+
+def infer_viewer_page_label(
+    viewer_page_token: str | None, side: str, viewer_total: int | None
+) -> str | None:
+    normalized = normalize_page_label(viewer_page_token)
+    if normalized is None or not normalized.isdigit():
+        return None
+
+    number = int(normalized)
+    if side == "right":
+        number += 1
+    if number <= 0:
+        return None
+    if viewer_total is not None and number > viewer_total:
+        return None
+    return str(number)
+
+
+def find_neighbor_numeric_label(
+    entries: list[dict[str, Any]], start_index: int, step: int
+) -> tuple[int, int] | None:
+    index = start_index + step
+    while 0 <= index < len(entries):
+        value = numeric_page_label(entries[index]["resolved"])
+        if value is not None:
+            return index, value
+        index += step
+    return None
+
+
+def resolve_manifest_page_numbers(manifest: dict[str, Any]) -> None:
+    entries: list[dict[str, Any]] = []
+
+    for spread in ordered_spreads(manifest):
+        viewer_total = spread.get("viewer_total")
+        viewer_page_token = spread.get("viewer_page_token")
+        for page in ordered_pages(spread):
+            raw_printed_page_number = page.get(
+                "raw_printed_page_number", page.get("printed_page_number")
+            )
+            footer_label = normalize_page_label(raw_printed_page_number)
+            tail_label = normalize_page_label(page.get("trailing_page_number_candidate"))
+            if tail_label is None:
+                tail_label = extract_trailing_page_number(page.get("text_blocks", []))
+            page_viewer_total = page.get("viewer_total") or viewer_total
+            viewer_label = infer_viewer_page_label(
+                page.get("viewer_page_token") or viewer_page_token,
+                page.get("side", "left"),
+                page_viewer_total,
+            )
+
+            resolved_label = None
+            if viewer_label is not None:
+                resolved_label = viewer_label
+            elif tail_label is not None and not tail_label.isdigit() and len(tail_label) > 1:
+                resolved_label = tail_label
+
+            entries.append(
+                {
+                    "page": page,
+                    "viewer_total": page_viewer_total,
+                    "footer": footer_label,
+                    "tail": tail_label,
+                    "resolved": resolved_label,
+                }
+            )
+
+            page["raw_printed_page_number"] = raw_printed_page_number
+
+    changed = True
+    while changed:
+        changed = False
+        for index, entry in enumerate(entries):
+            if entry["resolved"] is not None:
+                continue
+
+            numeric_candidates: list[str] = []
+            for candidate in (entry["tail"], entry["footer"]):
+                if candidate is None or not candidate.isdigit():
+                    continue
+                number = int(candidate)
+                viewer_total = entry["viewer_total"]
+                if viewer_total is not None and number > viewer_total:
+                    continue
+                if candidate not in numeric_candidates:
+                    numeric_candidates.append(candidate)
+
+            if not numeric_candidates:
+                continue
+
+            previous = find_neighbor_numeric_label(entries, index, -1)
+            following = find_neighbor_numeric_label(entries, index, 1)
+
+            for candidate in numeric_candidates:
+                number = int(candidate)
+                matches_previous = (
+                    previous is not None and previous[1] + (index - previous[0]) == number
+                )
+                matches_following = (
+                    following is not None and number + (following[0] - index) == following[1]
+                )
+                if matches_previous or matches_following:
+                    entry["resolved"] = candidate
+                    changed = True
+                    break
+
+    for entry in entries:
+        page = entry["page"]
+        page["printed_page_number"] = entry["resolved"]
+        if entry["resolved"] is not None:
+            strip_trailing_page_number(page.get("text_blocks", []), entry["resolved"])
 
 
 def extract_page(
@@ -956,6 +1139,7 @@ def extract_page(
     text_seed_mask = make_text_seed_mask(page_image.shape[:2], initial_words)
     image_bboxes = detect_image_bboxes(page_image, text_seed_mask)
     text_blocks = build_text_blocks(page_image, text_seed_mask, initial_words, image_bboxes)
+    trailing_page_number_candidate = extract_trailing_page_number(text_blocks)
     strip_trailing_page_number(text_blocks, printed_page_number)
     image_regions = extract_image_regions(
         page_image=page_image,
@@ -999,6 +1183,7 @@ def extract_page(
         "viewer_page_token": viewer_metadata.get("viewer_page_token"),
         "viewer_sequence": viewer_metadata.get("viewer_sequence"),
         "viewer_total": viewer_metadata.get("viewer_total"),
+        "trailing_page_number_candidate": trailing_page_number_candidate,
     }
 
 
@@ -1145,24 +1330,17 @@ def render_markdown(
 ) -> None:
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
+    resolve_manifest_page_numbers(manifest)
     overrides = load_overrides(overrides_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_assets_dir = output_path.parent / "assets" / "photos"
 
-    spreads = manifest.get("spreads", [])
-    spreads.sort(
-        key=lambda item: (
-            item.get("viewer_sequence") is None,
-            item.get("viewer_sequence") or sys.maxsize,
-            item.get("spread_id"),
-        )
-    )
+    spreads = ordered_spreads(manifest)
 
     chunks: list[str] = []
     for spread in spreads:
-        pages = spread.get("pages", [])
-        pages.sort(key=lambda page: 0 if page.get("side") == "left" else 1)
+        pages = ordered_pages(spread)
         for page in pages:
             override = overrides.get(page["page_id"], {})
             rendered_page = apply_page_override(page, override)
@@ -1179,7 +1357,7 @@ def render_markdown(
             heading = (
                 f"## Page {printed_page_number}"
                 if printed_page_number
-                else f"## Viewer Page {viewer_page_token or viewer_sequence or 'unknown'}"
+                else "## Unnumbered Page"
             )
             chunks.append(
                 "\n".join(
@@ -1284,6 +1462,7 @@ def extract_command(
         },
         "spreads": spreads,
     }
+    resolve_manifest_page_numbers(manifest)
 
     manifest_path = output_dir / "book_manifest.json"
     overrides_path = output_dir / "manual_overrides.json"

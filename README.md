@@ -2,6 +2,8 @@
 
 Extracts OCR text, page numbers, and image assets from the screenshots in `raw_ss/`, then renders a page-preserving Markdown transcription.
 
+This project was built with OpenAI Codex.
+
 ## Setup
 
 ```bash
@@ -20,12 +22,22 @@ python3 -m venv .venv
 
 ## Outputs
 
-- `artifacts/book_manifest.json`: extracted spreads, pages, text blocks, images, metadata, and issues
+- `artifacts/book_manifest.json`: extracted spreads, pages, text blocks, images, metadata, raw page-number evidence, and issues
 - `artifacts/manual_overrides.json`: review file for manual corrections before rendering
 - `artifacts/pages/`: cropped page images
 - `artifacts/assets/photos/`: extracted photos, maps, and illustrations
 - `output/book.md`: rendered Markdown
 - `output/assets/photos/`: copied image assets referenced by the Markdown
+
+## Page Labels
+
+Rendered page headings are resolved from a mix of sources:
+
+- Archive viewer page tokens when they form a reliable numeric sequence
+- trailing page numbers already present in the extracted page text
+- footer OCR when it agrees with the surrounding numbering
+
+If the pipeline cannot resolve a trustworthy label for a page, the Markdown will render it as `## Unnumbered Page` instead of emitting a misleading page number.
 
 ## Overrides Format
 

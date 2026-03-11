@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +14,12 @@ import cv2
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "book_pipeline.py"
+MODULE_SPEC = importlib.util.spec_from_file_location("book_pipeline", SCRIPT_PATH)
+assert MODULE_SPEC is not None
+assert MODULE_SPEC.loader is not None
+book_pipeline = importlib.util.module_from_spec(MODULE_SPEC)
+sys.modules[MODULE_SPEC.name] = book_pipeline
+MODULE_SPEC.loader.exec_module(book_pipeline)
 RAW_SS = REPO_ROOT / "raw_ss"
 SMOKE_FILES = [
     "Screenshot 2026-03-10 at 12.22.14 PM.png",
@@ -161,6 +169,157 @@ class BookPipelineSmokeTest(unittest.TestCase):
         self.assertEqual(left_image.shape[0], 720)
         self.assertEqual(right_image.shape[1], 700)
         self.assertEqual(right_image.shape[0], 720)
+
+
+class PageLabelResolutionTest(unittest.TestCase):
+    def test_resolver_prefers_viewer_labels_and_neighbor_consistency(self) -> None:
+        manifest = {
+            "spreads": [
+                {
+                    "spread_id": "0001",
+                    "viewer_sequence": 10,
+                    "viewer_total": 340,
+                    "viewer_page_token": None,
+                    "pages": [
+                        {
+                            "page_id": "0001-left",
+                            "side": "left",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Index page 263", "keep": True}],
+                        },
+                        {
+                            "page_id": "0001-right",
+                            "side": "right",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Preface xi", "keep": True}],
+                        },
+                    ],
+                },
+                {
+                    "spread_id": "0002",
+                    "viewer_sequence": 20,
+                    "viewer_total": 340,
+                    "viewer_page_token": "4",
+                    "pages": [
+                        {
+                            "page_id": "0002-left",
+                            "side": "left",
+                            "printed_page_number": "1",
+                            "text_blocks": [{"text": "Chapter text 4", "keep": True}],
+                        },
+                        {
+                            "page_id": "0002-right",
+                            "side": "right",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "More text 5", "keep": True}],
+                        },
+                    ],
+                },
+                {
+                    "spread_id": "0003",
+                    "viewer_sequence": 74,
+                    "viewer_total": 340,
+                    "viewer_page_token": None,
+                    "pages": [
+                        {
+                            "page_id": "0003-left",
+                            "side": "left",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Illustration plate", "keep": True}],
+                        },
+                        {
+                            "page_id": "0003-right",
+                            "side": "right",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Oil text 51", "keep": True}],
+                        },
+                    ],
+                },
+                {
+                    "spread_id": "0004",
+                    "viewer_sequence": 76,
+                    "viewer_total": 340,
+                    "viewer_page_token": "52",
+                    "pages": [
+                        {
+                            "page_id": "0004-left",
+                            "side": "left",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Next text 52", "keep": True}],
+                        },
+                        {
+                            "page_id": "0004-right",
+                            "side": "right",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Next text 53", "keep": True}],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        book_pipeline.resolve_manifest_page_numbers(manifest)
+
+        first_spread_pages = manifest["spreads"][0]["pages"]
+        self.assertIsNone(first_spread_pages[0]["printed_page_number"])
+        self.assertEqual(first_spread_pages[1]["printed_page_number"], "XI")
+
+        second_spread_pages = manifest["spreads"][1]["pages"]
+        self.assertEqual(second_spread_pages[0]["printed_page_number"], "4")
+        self.assertEqual(second_spread_pages[1]["printed_page_number"], "5")
+        self.assertEqual(second_spread_pages[0]["text_blocks"][0]["text"], "Chapter text")
+        self.assertEqual(second_spread_pages[1]["text_blocks"][0]["text"], "More text")
+
+        third_spread_pages = manifest["spreads"][2]["pages"]
+        self.assertIsNone(third_spread_pages[0]["printed_page_number"])
+        self.assertEqual(third_spread_pages[1]["printed_page_number"], "51")
+        self.assertEqual(third_spread_pages[1]["text_blocks"][0]["text"], "Oil text")
+
+    def test_render_uses_unnumbered_heading_when_no_label_is_resolved(self) -> None:
+        manifest = {
+            "spreads": [
+                {
+                    "spread_id": "0001",
+                    "viewer_sequence": 4,
+                    "viewer_total": 340,
+                    "viewer_page_token": None,
+                    "pages": [
+                        {
+                            "page_id": "0001-left",
+                            "side": "left",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "Title page 1972", "bbox": [0, 0, 1, 1], "keep": True}],
+                            "image_regions": [],
+                            "issues": [],
+                        },
+                        {
+                            "page_id": "0001-right",
+                            "side": "right",
+                            "printed_page_number": None,
+                            "text_blocks": [{"text": "More title text", "bbox": [0, 0, 1, 1], "keep": True}],
+                            "image_regions": [],
+                            "issues": [],
+                        },
+                    ],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory(prefix="book-render-test-") as temp_dir:
+            temp_path = Path(temp_dir)
+            manifest_path = temp_path / "book_manifest.json"
+            overrides_path = temp_path / "manual_overrides.json"
+            output_path = temp_path / "book.md"
+
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            overrides_path.write_text("{}\n", encoding="utf-8")
+
+            book_pipeline.render_markdown(manifest_path, overrides_path, output_path)
+
+            markdown = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("## Unnumbered Page", markdown)
+        self.assertNotIn("## Viewer Page", markdown)
 
 
 if __name__ == "__main__":
