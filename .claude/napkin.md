@@ -11,9 +11,11 @@
 | 2026-03-11 | self | Imported `scripts/book_pipeline.py` in tests via `importlib` without registering the module in `sys.modules`, which broke `@dataclass` processing | When loading repo scripts by spec in tests, insert the module into `sys.modules` before `exec_module` |
 | 2026-03-11 | self | Tried to update the Git index in the sandbox and hit `.git/index.lock: Operation not permitted` | For commands that modify tracked files or staging state here, request escalated permissions for the Git operation |
 | 2026-03-11 | self | README had drifted from the current page-label resolver and did not mention the project's Codex-assisted origin | Keep `README.md` updated when page-number heuristics or project provenance need to be explicit |
+| 2026-03-13 | self | Used a `find ... -prune -o ... -delete` expression that still tried to touch `./.git/.DS_Store` | When deleting junk files here, verify `find` prune/delete precedence carefully or target explicit paths instead |
 
 ## User Preferences
 - Build practical local pipelines end-to-end instead of stopping at design.
+- Keep local environment, OS metadata, and Python cache artifacts out of Git.
 
 ## Patterns That Work
 - `tesseract` is already installed globally and can OCR these screenshots well enough once the browser chrome is cropped out.
@@ -33,3 +35,5 @@
 - In `output/book.md`, the common numbered-page heading format is `## Page <digits>`, but at least one front-matter heading uses a roman numeral (`## Page XI`).
 - `scripts/book_pipeline.py` only OCRs digit-only printed page numbers, so roman-numeral front matter will fall back to viewer labels or produce bogus numeric matches.
 - `.gitignore` contains `**__pycache__**`, which does match `__pycache__` directories here, but tracked `.pyc` files already exist under `scripts/__pycache__/` and `tests/__pycache__/`.
+- The repo uses a root `.venv` for local Python work; it should stay untracked and ignored.
+- `raw_ss/`, `artifacts/`, `output/`, and `config/crop_boxes.json` are intentional repo data/config, so do not blanket-ignore generated-looking pipeline directories here.
