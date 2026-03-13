@@ -30,5 +30,6 @@
 - `raw_ss/` contains 167 screenshot PNGs captured from the Internet Archive 2-up viewer.
 - The pages are embedded inside browser chrome with a dark viewer background, so spread detection and page splitting are mandatory before OCR.
 - `output/book.md` page headers can mix OCR-detected printed page numbers with viewer fallback labels, so header order is not guaranteed to be monotonic.
+- In `output/book.md`, the common numbered-page heading format is `## Page <digits>`, but at least one front-matter heading uses a roman numeral (`## Page XI`).
 - `scripts/book_pipeline.py` only OCRs digit-only printed page numbers, so roman-numeral front matter will fall back to viewer labels or produce bogus numeric matches.
 - `.gitignore` contains `**__pycache__**`, which does match `__pycache__` directories here, but tracked `.pyc` files already exist under `scripts/__pycache__/` and `tests/__pycache__/`.
